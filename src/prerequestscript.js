@@ -1,60 +1,18 @@
-/*
- * HTTP-HMAC-POSTMAN
- * VERSION: 1.1.4
- *
- * To use this script, paste it into the Postman pre-script editor
- * *AND* add these headers to the request
- *   Authorization:{{acqHmacHeader}}
- *   X-Authorization-Timestamp:{{acqHmacTimestamp}}
- *   X-Authorization-Content-SHA256:{{acqHmacContentSha}}
- *
- *   This code sets the Postman environment variables:
- *     {{acqHmacHeader}}
- *     {{acqHmacContentSha}}
- *     {{acqHmacTimestamp}}
- *
- *   This code expects these Postman environement variables to be set:
- *     {{hmacKey}} defaults to ''
- *     {{hmacSecret}} defaults to ''
- *     {{secretIsBase64encoded}} defaults to true
- *
- *   Note: Only HMAC version 2.0 is supported
- *
- *   Notes for using this script to connect to Acquia Commerce Connetore Service
- *      1. Create Postman environment Variable 'secretIsBase64encoded' set to 'false'
- *      2. Do not base64 encode the HMAC secret
- *
- *   Notes for using this script to connect to Acquia Lift
- *      1. Use a base64 encoded secret
- *      2. Set Postman environment variable acquiaLiftAccountId set to your account ID
- *
- */
+//HTTP-HMAC-POSTMAN
+//VERSION: 1.1.0
 
-var publicKey = postman.getEnvironmentVariable('env_pubkey') || '';
-var secretKey = postman.getEnvironmentVariable('env_secretkey') || '';
-var hmacRealm = postman.getEnvironmentVariable('env_realm') || '';
+var publicKey = '<API key>'; //postman.getEnvironmentVariable("key");
+var secretKey = '<Secret key>'; //postman.getEnvironmentVariable("secret"); 
+var hmacRealm = "Acquia";
 
-// Decide what to do with the secret
-var hasAlreadyEncodedSecret = postman.getEnvironmentVariable('secretIsBase64encoded') || true;
-
+//Only required for Acquia Lift Decision API & Content Hub API
+var acquiaAccountID = "<Account ID>";
 
 //############################################################################
 //############################################################################
-//####################### DO NOT EDIT BELOW THIS POINT #######################
+//####################### DO NOT EDIT BELOW THIS POINT ####################### 
 //############################################################################
 //############################################################################
-
-if (hasAlreadyEncodedSecret && hasAlreadyEncodedSecret !== "false")
-{
-    // do nothing here
-}
-else
-{
-    // encode the secret
-    // strictly, pre-encoding is incorrect but that is a discussion for another day
-    wordArray = CryptoJS.enc.Utf8.parse(secretKey);
-    secretKey = CryptoJS.enc.Base64.stringify(wordArray);
-}
 
 //Acquia HMAC LIB https://github.com/acquia/http-hmac-javascript
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -270,13 +228,8 @@ var AcquiaHttpHmac = function () {
       throw new Error('The version must be "' + supported_versions.join('" or "') + '". Version "' + version + '" is not supported.');
     }
 
-    this.config = {
-        realm: realm,
-        public_key: public_key,
-        parsed_secret_key: CryptoJS.enc.Base64.parse(secret_key),
-        version: version,
-        default_content_type: default_content_type
-    };
+    var parsed_secret_key = CryptoJS.enc.Base64.parse(secret_key);
+    this.config = { realm: realm, public_key: public_key, parsed_secret_key: parsed_secret_key, version: version, default_content_type: default_content_type };
 
     /**
      * Supported methods. Other HTTP methods through XMLHttpRequest are not supported by modern browsers due to insecurity.
@@ -421,11 +374,11 @@ var AcquiaHttpHmac = function () {
       var nonce = generateNonce(),
           parser = AcquiaHttpHmac.parseUri(path),
           authorization_parameters = {
-              id: this.config.public_key,
-              nonce: request.id,
-              realm: this.config.realm,
-              version: this.config.version
-          },
+        id: this.config.public_key,
+        nonce: request.id,
+        realm: this.config.realm,
+        version: this.config.version
+      },
           x_authorization_timestamp = Math.floor(Date.now() / 1000).toString(),
           x_authorization_content_sha256 = willSendBody(body, method) ? CryptoJS.SHA256(body).toString(CryptoJS.enc.Base64) : '',
           signature_base_string_content_suffix = willSendBody(body, method) ? '\n' + 'application/json' + '\n' + x_authorization_content_sha256 : '',
@@ -444,7 +397,7 @@ var AcquiaHttpHmac = function () {
         request.acquiaHttpHmac = {};
         request.acquiaHttpHmac.timestamp = x_authorization_timestamp;
         request.acquiaHttpHmac.nonce = nonce;
-
+      
         postman.setEnvironmentVariable('acqHmacTimestamp',x_authorization_timestamp);
         postman.setEnvironmentVariable('acqHmacHeader', authorization);
         postman.setEnvironmentVariable('acqHmacContentSha',x_authorization_content_sha256);
@@ -469,7 +422,7 @@ var AcquiaHttpHmac = function () {
      */
     value: function hasValidResponse(request) {
       var signature_base_string = request.acquiaHttpHmac.nonce + '\n' + request.acquiaHttpHmac.timestamp + '\n' + request.responseText,
-          signature = CryptoJS.HmacSHA256(signature_base_string, this.config.secret_key).toString(CryptoJS.enc.Base64),
+          signature = CryptoJS.HmacSHA256(signature_base_string, this.config.parsed_secret_key).toString(CryptoJS.enc.Base64),
           server_signature = request.getResponseHeader('X-Server-Authorization-HMAC-SHA256');
 
       void 0;
@@ -544,6 +497,8 @@ var AcquiaHttpHmac = function () {
   return AcquiaHttpHmac;
 }();
 
+console.log(request.headers['content-type']);
+
 var method = request.method.toUpperCase(),
     path = request.url,
     signed_headers = {},
@@ -558,4 +513,7 @@ var hmac_config = {
   secret_key: secretKey
 };
 const HMAC = new AcquiaHttpHmac(hmac_config);
+
 HMAC.sign(sign_parameters);
+
+postman.setEnvironmentVariable('acqAccountID', acquiaAccountID);
